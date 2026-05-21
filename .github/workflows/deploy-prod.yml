@@ -1,0 +1,54 @@
+name: Deploy to Vercel (tags only)
+
+# Production deploy fires ONLY on a v* tag push.
+# Vercel's automatic git integration MUST be disconnected for this project.
+# Requires repo secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Manual trigger — re-deploy a specific tag without retagging.
+  # Useful when secrets are rotated or a transient Vercel error blocked the
+  # original tag-push run. Pass the tag (or branch) as the workflow ref.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to deploy (informational; the workflow checks out the ref the dispatch was triggered on)'
+        required: false
+        default: ''
+
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy landing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+      - name: Pull Vercel env (production)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build (production)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          # Stamp the build with the release tag — parity with apps/web pattern.
+          # Safe no-op if landing doesn't read VITE_APP_VERSION today.
+          VITE_APP_VERSION: ${{ github.ref_name }}
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy (production)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
